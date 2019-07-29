@@ -1,5 +1,5 @@
 # Send AWS cloudwatch notifications to Slack channel
-# AWS is now providing free service called AWS Chatbot, which provides that functionality.
+# AWS is now providing free service called AWS Chatbot to do the same thing.
 
 1. Create s3 bucket and push zipped .py file
 2. Run cloudformation with provided template to create a stack
