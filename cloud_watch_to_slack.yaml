@@ -1,0 +1,95 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Lambda to push cloudwatch notifications to slack
+Parameters:
+  envtype:
+    Type: String
+    Description: 'Test or Prod'
+  bucketname:
+    Type: String
+  lambdaname:
+    Type: String
+  SlackWebhook:
+    Type: String
+  SlackChannel:
+    Type: String
+  SNSEmailAddress:
+    Description: SNS Email Address
+    Type: String
+
+Resources:
+  LambdaRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: "/"
+      Policies:
+        - PolicyName: CwToSlackPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: logs:CreateLogGroup
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*
+              - Effect: Allow
+                Action:
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${lambdaname}:*
+
+  SecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      VpcId:
+        Fn::ImportValue:
+          !Sub "VPC-ID"
+      GroupDescription: cloudwatch to slack lambda rules
+
+  CwToSlackLambda:
+    Type: "AWS::Lambda::Function"
+    DependsOn:
+      - LambdaRole
+    Properties:
+      Code:
+        S3Bucket: !Ref bucketname
+        S3Key: "cw-to-slack-notifications.zip"
+      Description: Lambda to send cw alarms to slack
+      Environment:
+        Variables:
+          SLACK_WEBHOOK: !Ref SlackWebhook
+          SLACK_CHANNEL: !Ref SlackChannel
+          REGION: !Sub ${AWS::Region}
+      FunctionName: !Ref lambdaname
+      Handler: "cw-to-slack-notifications.lambda_handler"
+      MemorySize: 128
+      Role:
+        Fn::GetAtt:
+          - LambdaRole
+          - Arn
+      Runtime: "python3.7"
+      Timeout: 10
+      VpcConfig:
+        SecurityGroupIds:
+          - Ref: SecurityGroup
+        SubnetIds:
+          - {'Fn::ImportValue': !Sub "PrivateSubnet1"}
+          - {'Fn::ImportValue': !Sub "PrivateSubnet2"}
+          - {'Fn::ImportValue': !Sub "PrivateSubnet3"}
+
+  SNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription:
+        - Endpoint: !Sub ${SNSEmailAddress}
+          Protocol: email
+      TopicName: Alerts
